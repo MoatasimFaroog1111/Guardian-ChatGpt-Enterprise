@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 
 from guardian.adapters.local import (
@@ -17,8 +18,33 @@ from guardian.core.audit import SQLiteAuditLedger
 from guardian.core.workflow import WorkflowCoordinator
 
 
+def load_guardian_config() -> dict[str, str]:
+    raw = os.getenv("GUARDIAN_CONFIG", "").strip()
+    if not raw:
+        return {}
+
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("GUARDIAN_CONFIG must be valid JSON") from exc
+
+    if not isinstance(payload, dict):
+        raise TypeError("GUARDIAN_CONFIG must be a JSON object")
+
+    return {
+        str(key): str(value)
+        for key, value in payload.items()
+        if value is not None
+    }
+
+
+def config_value(name: str, default: str | None = None) -> str | None:
+    config = load_guardian_config()
+    return config.get(name) or os.getenv(name) or default
+
+
 def build_coordinator() -> WorkflowCoordinator:
-    database_url = os.getenv("DATABASE_URL")
+    database_url = config_value("DATABASE_URL")
 
     if database_url:
         postgres = PostgresStorage(database_url)
@@ -27,13 +53,14 @@ def build_coordinator() -> WorkflowCoordinator:
         state_store = PostgresWorkflowStateStore(postgres)
     else:
         audit = SQLiteAuditLedger(
-            os.getenv("GUARDIAN_DB", "/tmp/guardian.db")
+            config_value("GUARDIAN_DB", "/tmp/guardian.db")
+            or "/tmp/guardian.db"
         )
         evidence = InMemoryEvidenceStore()
         state_store = InMemoryWorkflowStateStore()
 
-    upstash_url = os.getenv("UPSTASH_REDIS_REST_URL")
-    upstash_token = os.getenv("UPSTASH_REDIS_REST_TOKEN")
+    upstash_url = config_value("UPSTASH_REDIS_REST_URL")
+    upstash_token = config_value("UPSTASH_REDIS_REST_TOKEN")
     if upstash_url and upstash_token:
         idempotency = UpstashIdempotencyStore(
             upstash_url,

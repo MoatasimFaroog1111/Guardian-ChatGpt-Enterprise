@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import secrets
 
 from fastapi import FastAPI, Header, HTTPException, Request
@@ -8,7 +7,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from guardian.core.models import ActorIdentity, CommandEnvelope
-from guardian.runtime import build_coordinator
+from guardian.runtime import build_coordinator, config_value
 
 coordinator = build_coordinator()
 app = FastAPI(title="Guardian Autonomous Enterprise", version="0.2.0")
@@ -16,7 +15,7 @@ app = FastAPI(title="Guardian Autonomous Enterprise", version="0.2.0")
 
 @app.middleware("http")
 async def require_edge_secret(request: Request, call_next):
-    expected = os.getenv("GUARDIAN_EDGE_SECRET")
+    expected = config_value("GUARDIAN_EDGE_SECRET")
     if expected and request.url.path != "/health":
         supplied = request.headers.get("X-Guardian-Edge-Secret", "")
         if not secrets.compare_digest(supplied, expected):
@@ -72,12 +71,12 @@ def health() -> dict:
         "service": "guardian-command-center",
         "persistence": (
             "postgres"
-            if os.getenv("DATABASE_URL")
+            if config_value("DATABASE_URL")
             else "local"
         ),
         "idempotency": (
             "upstash"
-            if os.getenv("UPSTASH_REDIS_REST_URL")
+            if config_value("UPSTASH_REDIS_REST_URL")
             else "memory"
         ),
     }

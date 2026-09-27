@@ -41,18 +41,32 @@ Coolify.
 - GPU providers never own enterprise state.
 - Cloudflare Worker never contains domain or accounting rules.
 
-## Secrets
+## One-secret production configuration
 
-Do not put production credentials in GitHub files. Use provider secret stores:
+Fly.io requires only one application secret:
 
-- Fly secrets: `DATABASE_URL`, Upstash, R2, edge secret and model credentials.
-- Cloudflare Worker secret: `EDGE_SHARED_SECRET`.
-- GitHub Actions secrets: deployment tokens only.
-- Pages contains no private token.
+`GUARDIAN_CONFIG`
 
-Use the same random value for Fly `GUARDIAN_EDGE_SECRET` and Worker
-`EDGE_SHARED_SECRET`. This blocks direct mutation calls to the backend while
-keeping `/health` available to the platform.
+It is a JSON object that can contain all sensitive runtime values:
+
+```json
+{
+  "DATABASE_URL": "postgresql://...",
+  "GUARDIAN_EDGE_SECRET": "...",
+  "UPSTASH_REDIS_REST_URL": "https://...",
+  "UPSTASH_REDIS_REST_TOKEN": "...",
+  "R2_ENDPOINT_URL": "https://...",
+  "R2_ACCESS_KEY_ID": "...",
+  "R2_SECRET_ACCESS_KEY": "...",
+  "R2_BUCKET": "guardian-enterprise"
+}
+```
+
+The runtime first reads `GUARDIAN_CONFIG`, then falls back to individual
+environment variables for local development. This keeps Fly configuration to
+one secret while preserving provider independence.
+
+Cloudflare Worker still stores only its matching `EDGE_SHARED_SECRET`.
 
 ## Cloudflare
 
@@ -65,20 +79,19 @@ GitHub repository variable `GUARDIAN_API_BASE` to the deployed Worker origin.
 
 ## Neon
 
-Set `DATABASE_URL` to the pooled Neon connection string with TLS. The runtime
-creates the minimal schema automatically; `deploy/neon/schema.sql` is also
-provided for explicit provisioning/review.
+Set `DATABASE_URL` inside `GUARDIAN_CONFIG` to the pooled Neon connection
+string with TLS. The runtime creates the minimal schema automatically;
+`deploy/neon/schema.sql` is also provided for explicit provisioning/review.
 
 ## Upstash
 
-Set `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`. The adapter
-uses REST commands rather than a persistent Redis socket, which fits serverless
-and low-idle-cost deployments.
+Add `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` to the same
+`GUARDIAN_CONFIG` JSON object when Upstash is enabled.
 
 ## R2
 
-Create a private bucket and use an R2 API token limited to that bucket. Configure
-the S3-compatible endpoint and credentials from `.env.example`.
+Add the R2 endpoint and bucket-scoped credentials to `GUARDIAN_CONFIG` when
+R2 is enabled.
 
 ## Fly.io
 
