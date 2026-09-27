@@ -1,22 +1,26 @@
 from __future__ import annotations
 
 import os
+import secrets
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from guardian.adapters.local import InMemoryERP, InMemoryEvidenceStore
-from guardian.core.audit import SQLiteAuditLedger
 from guardian.core.models import ActorIdentity, CommandEnvelope
-from guardian.core.workflow import WorkflowCoordinator
+from guardian.runtime import build_coordinator
 
-DB = os.getenv("GUARDIAN_DB", "/tmp/guardian.db")
-coordinator = WorkflowCoordinator(
-    SQLiteAuditLedger(DB),
-    InMemoryERP(),
-    InMemoryEvidenceStore(),
-)
-app = FastAPI(title="Guardian Autonomous Enterprise", version="0.1.0")
+coordinator = build_coordinator()
+app = FastAPI(title="Guardian Autonomous Enterprise", version="0.2.0")
+
+
+@app.middleware("http")
+async def require_edge_secret(request: Request, call_next):
+    expected = os.getenv("GUARDIAN_EDGE_SECRET")
+    if expected and request.url.path != "/health":
+        supplied = request.headers.get("X-Guardian-Edge-Secret", "")
+        if not secrets.compare_digest(supplied, expected):
+            raise HTTPException(403, "edge authorization required")
+    return await call_next(request)
 
 
 class ReconcileRequest(BaseModel):
@@ -62,6 +66,16 @@ def health() -> dict:
     return {
         "status": "ok",
         "service": "guardian-command-center",
+        "persistence": (
+            "postgres"
+            if os.getenv("DATABASE_URL")
+            else "local"
+        ),
+        "idempotency": (
+            "upstash"
+            if os.getenv("UPSTASH_REDIS_REST_URL")
+            else "memory"
+        ),
     }
 
 
