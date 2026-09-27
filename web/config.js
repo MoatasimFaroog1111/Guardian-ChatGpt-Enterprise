@@ -1,0 +1,1 @@
+window.GUARDIAN_API_BASE = "__GUARDIAN_API_BASE__";
