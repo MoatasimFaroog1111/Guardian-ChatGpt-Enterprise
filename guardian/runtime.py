@@ -29,7 +29,7 @@ def load_guardian_config() -> dict[str, str]:
         raise RuntimeError("GUARDIAN_CONFIG must be valid JSON") from exc
 
     if not isinstance(payload, dict):
-        raise RuntimeError("GUARDIAN_CONFIG must be a JSON object")
+        raise TypeError("GUARDIAN_CONFIG must be a JSON object")
 
     return {
         str(key): str(value)
