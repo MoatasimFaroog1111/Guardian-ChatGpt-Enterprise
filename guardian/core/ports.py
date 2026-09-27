@@ -1,0 +1,23 @@
+from __future__ import annotations
+
+from typing import Protocol, Any
+from guardian.core.models import AuditRecord, EvidenceItem
+
+
+class AuditPort(Protocol):
+    def append(self, record: AuditRecord) -> AuditRecord: ...
+    def list_for_workflow(self, workflow_id: str) -> list[AuditRecord]: ...
+
+
+class ErpPort(Protocol):
+    def create_draft_journal(self, payload: dict[str, Any], idempotency_key: str) -> dict[str, Any]: ...
+    def read_journal(self, external_id: str) -> dict[str, Any]: ...
+
+
+class NotificationPort(Protocol):
+    async def send(self, actor_id: str, message: str) -> None: ...
+
+
+class EvidencePort(Protocol):
+    def store(self, workflow_id: str, evidence: list[EvidenceItem]) -> None: ...
+    def load(self, workflow_id: str) -> list[EvidenceItem]: ...
