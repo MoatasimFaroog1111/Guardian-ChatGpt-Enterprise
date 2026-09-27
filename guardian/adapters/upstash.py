@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from urllib.parse import quote
-
 import httpx
 
 
@@ -35,7 +33,6 @@ class UpstashIdempotencyStore:
         return response.json().get("result")
 
     def get(self, key: str) -> str | None:
-        del quote
         result = self._command(["GET", self._key(key)])
         return str(result) if result is not None else None
 
