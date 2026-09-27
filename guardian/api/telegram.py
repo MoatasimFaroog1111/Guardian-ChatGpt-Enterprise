@@ -1,11 +1,22 @@
-"""Telegram delivery adapter. Intentionally contains zero business rules.
-Wire Telegram updates to the Command Center API; all policy remains in core.
-"""
+"""Telegram delivery adapter with zero business rules."""
+
 from __future__ import annotations
-import os, httpx
+
+import os
+
+import httpx
+
 
 async def forward_reconcile(actor_id: str, payload: dict) -> dict:
-    base=os.environ.get("GUARDIAN_API_URL","http://localhost:8000")
+    base_url = os.environ.get(
+        "GUARDIAN_API_URL",
+        "http://localhost:8000",
+    )
     async with httpx.AsyncClient(timeout=30) as client:
-        r=await client.post(f"{base}/v1/finance/bank-reconciliation",json=payload,headers={"X-Actor-Id":actor_id})
-        r.raise_for_status(); return r.json()
+        response = await client.post(
+            f"{base_url}/v1/finance/bank-reconciliation",
+            json=payload,
+            headers={"X-Actor-Id": actor_id},
+        )
+        response.raise_for_status()
+        return response.json()
