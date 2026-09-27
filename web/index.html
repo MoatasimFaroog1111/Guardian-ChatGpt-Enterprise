@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Guardian Enterprise Console</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, system-ui, sans-serif; }
+    body { margin: 0; background: #08101f; color: #edf4ff; }
+    main { max-width: 980px; margin: auto; padding: 32px 20px; }
+    .card { background: #111c31; border: 1px solid #253655;
+      border-radius: 16px; padding: 18px; margin: 14px 0; }
+    input, textarea, button { width: 100%; box-sizing: border-box;
+      margin-top: 8px; padding: 11px; border-radius: 10px;
+      border: 1px solid #385278; background: #0c1628; color: inherit; }
+    button { cursor: pointer; background: #1b63d8; font-weight: 700; }
+    pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+    .ok { color: #6ee7b7; } .bad { color: #fca5a5; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Guardian Enterprise Console</h1>
+  <p>Human-controlled command center. Financial execution remains draft-only.</p>
+
+  <section class="card">
+    <h2>System status</h2>
+    <button id="health">Check health</button>
+    <pre id="healthOut"></pre>
+  </section>
+
+  <section class="card">
+    <h2>Bank reconciliation proposal</h2>
+    <label>Actor ID<input id="actor" value="finance-user"></label>
+    <label>Payload
+      <textarea id="payload" rows="14">{
+  "bank": {
+    "transaction_id": "BANK-001",
+    "transaction_date": "2026-09-27",
+    "amount": "100.00",
+    "reference": "INV-1",
+    "partner": "ACME"
+  },
+  "gl_rows": [],
+  "idempotency_key": "demo-bank-001"
+}</textarea>
+    </label>
+    <button id="submit">Create proposal</button>
+    <pre id="proposalOut"></pre>
+  </section>
+</main>
+<script src="./config.js"></script>
+<script>
+const raw = window.GUARDIAN_API_BASE;
+const apiBase = raw && !raw.includes("__GUARDIAN")
+  ? raw.replace(/\/$/, "")
+  : "";
+
+async function call(path, options = {}) {
+  if (!apiBase) throw new Error("GUARDIAN_API_BASE is not configured");
+  const response = await fetch(apiBase + path, options);
+  const body = await response.json();
+  if (!response.ok) throw new Error(JSON.stringify(body));
+  return body;
+}
+
+document.querySelector("#health").onclick = async () => {
+  const out = document.querySelector("#healthOut");
+  try {
+    out.textContent = JSON.stringify(await call("/api/health"), null, 2);
+    out.className = "ok";
+  } catch (error) {
+    out.textContent = error.message;
+    out.className = "bad";
+  }
+};
+
+document.querySelector("#submit").onclick = async () => {
+  const out = document.querySelector("#proposalOut");
+  try {
+    const body = JSON.parse(document.querySelector("#payload").value);
+    const actor = document.querySelector("#actor").value;
+    const result = await call("/api/v1/finance/bank-reconciliation", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Actor-Id": actor,
+        "X-Actor-Roles": "finance"
+      },
+      body: JSON.stringify(body)
+    });
+    out.textContent = JSON.stringify(result, null, 2);
+    out.className = "ok";
+  } catch (error) {
+    out.textContent = error.message;
+    out.className = "bad";
+  }
+};
+</script>
+</body>
+</html>
