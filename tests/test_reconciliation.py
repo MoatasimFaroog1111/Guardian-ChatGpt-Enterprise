@@ -3,6 +3,8 @@ import pytest
 from guardian.adapters.local import (
     InMemoryERP,
     InMemoryEvidenceStore,
+    InMemoryIdempotencyStore,
+    InMemoryWorkflowStateStore,
 )
 from guardian.core.audit import SQLiteAuditLedger
 from guardian.core.models import (
@@ -15,9 +17,11 @@ from guardian.core.workflow import WorkflowCoordinator
 
 def make_coordinator(tmp_path) -> WorkflowCoordinator:
     return WorkflowCoordinator(
-        SQLiteAuditLedger(str(tmp_path / "g.db")),
-        InMemoryERP(),
-        InMemoryEvidenceStore(),
+        audit=SQLiteAuditLedger(str(tmp_path / "g.db")),
+        erp=InMemoryERP(),
+        evidence=InMemoryEvidenceStore(),
+        state_store=InMemoryWorkflowStateStore(),
+        idempotency=InMemoryIdempotencyStore(),
     )
 
 
@@ -89,8 +93,16 @@ def test_financial_flow_requires_separate_approval_and_stays_draft(
     ) == 4
 
 
-def test_idempotency_returns_same_workflow(tmp_path) -> None:
-    coordinator = make_coordinator(tmp_path)
+def test_idempotency_survives_state_reload(tmp_path) -> None:
+    state_store = InMemoryWorkflowStateStore()
+    idempotency = InMemoryIdempotencyStore()
+    coordinator = WorkflowCoordinator(
+        audit=SQLiteAuditLedger(str(tmp_path / "g.db")),
+        erp=InMemoryERP(),
+        evidence=InMemoryEvidenceStore(),
+        state_store=state_store,
+        idempotency=idempotency,
+    )
     actor = ActorIdentity("u", "api", ())
     first = coordinator.submit_bank_reconciliation(
         CommandEnvelope(
@@ -100,7 +112,15 @@ def test_idempotency_returns_same_workflow(tmp_path) -> None:
             "same",
         )
     )
-    second = coordinator.submit_bank_reconciliation(
+
+    restarted = WorkflowCoordinator(
+        audit=coordinator.audit,
+        erp=coordinator.erp,
+        evidence=coordinator.evidence,
+        state_store=state_store,
+        idempotency=idempotency,
+    )
+    second = restarted.submit_bank_reconciliation(
         CommandEnvelope(
             "finance.bank_reconcile",
             payload(),
