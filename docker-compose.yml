@@ -1,0 +1,11 @@
+services:
+  guardian:
+    build: .
+    ports: ["8000:8000"]
+    environment:
+      GUARDIAN_DB: /data/guardian.db
+    volumes:
+      - guardian_data:/data
+    restart: unless-stopped
+volumes:
+  guardian_data:
