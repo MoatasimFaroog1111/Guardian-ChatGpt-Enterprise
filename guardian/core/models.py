@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from hashlib import sha256
 from typing import Any
@@ -9,7 +9,7 @@ from uuid import uuid4
 
 
 def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class RiskLevel(str, Enum):
@@ -45,7 +45,13 @@ class EvidenceItem:
 
     @property
     def digest(self) -> str:
-        raw = repr((self.source, sorted(self.payload.items()), self.captured_at.isoformat()))
+        raw = repr(
+            (
+                self.source,
+                sorted(self.payload.items()),
+                self.captured_at.isoformat(),
+            )
+        )
         return sha256(raw.encode()).hexdigest()
 
 
@@ -79,7 +85,11 @@ class AuditRecord:
     previous_hash: str = ""
     record_hash: str = ""
 
-    def seal(self) -> "AuditRecord":
-        raw = f"{self.workflow_id}|{self.event_type}|{self.actor_id}|{self.created_at.isoformat()}|{self.previous_hash}|{repr(sorted(self.payload.items()))}"
+    def seal(self) -> AuditRecord:
+        raw = (
+            f"{self.workflow_id}|{self.event_type}|{self.actor_id}|"
+            f"{self.created_at.isoformat()}|{self.previous_hash}|"
+            f"{sorted(self.payload.items())!r}"
+        )
         self.record_hash = sha256(raw.encode()).hexdigest()
         return self
