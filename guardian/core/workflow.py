@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from uuid import uuid4
 
@@ -42,22 +42,120 @@ class WorkflowCoordinator:
         audit,
         erp,
         evidence,
+        state_store,
+        idempotency,
         policy: PolicyEngine | None = None,
     ) -> None:
         self.audit = audit
         self.erp = erp
         self.evidence = evidence
+        self.state_store = state_store
+        self.idempotency = idempotency
         self.policy = policy or PolicyEngine()
-        self.states: dict[str, WorkflowState] = {}
-        self.idempotency: dict[str, str] = {}
+
+    @staticmethod
+    def _serialize(state: WorkflowState) -> dict:
+        approval = None
+        if state.approval:
+            approval = {
+                "workflow_id": state.approval.workflow_id,
+                "risk": state.approval.risk.value,
+                "reason": state.approval.reason,
+                "requested_by": state.approval.requested_by,
+                "approved_by": state.approval.approved_by,
+                "approved_at": (
+                    state.approval.approved_at.isoformat()
+                    if state.approval.approved_at
+                    else None
+                ),
+            }
+
+        return {
+            "workflow_id": state.workflow_id,
+            "command": {
+                "intent": state.command.intent,
+                "payload": state.command.payload,
+                "actor": {
+                    "actor_id": state.command.actor.actor_id,
+                    "channel": state.command.actor.channel,
+                    "roles": list(state.command.actor.roles),
+                },
+                "idempotency_key": state.command.idempotency_key,
+                "correlation_id": state.command.correlation_id,
+                "created_at": state.command.created_at.isoformat(),
+            },
+            "status": state.status.value,
+            "risk": state.risk.value,
+            "proposal": state.proposal,
+            "approval": approval,
+            "execution": state.execution,
+            "verification": state.verification,
+        }
+
+    @staticmethod
+    def _deserialize(payload: dict) -> WorkflowState:
+        command_data = payload["command"]
+        actor_data = command_data["actor"]
+        command = CommandEnvelope(
+            intent=command_data["intent"],
+            payload=command_data["payload"],
+            actor=ActorIdentity(
+                actor_data["actor_id"],
+                actor_data["channel"],
+                tuple(actor_data.get("roles", [])),
+            ),
+            idempotency_key=command_data["idempotency_key"],
+            correlation_id=command_data["correlation_id"],
+            created_at=datetime.fromisoformat(command_data["created_at"]),
+        )
+
+        approval_data = payload.get("approval")
+        approval = None
+        if approval_data:
+            approved_at = approval_data.get("approved_at")
+            approval = ApprovalRequest(
+                workflow_id=approval_data["workflow_id"],
+                risk=RiskLevel(approval_data["risk"]),
+                reason=approval_data["reason"],
+                requested_by=approval_data["requested_by"],
+                approved_by=approval_data.get("approved_by"),
+                approved_at=(
+                    datetime.fromisoformat(approved_at)
+                    if approved_at
+                    else None
+                ),
+            )
+
+        return WorkflowState(
+            workflow_id=payload["workflow_id"],
+            command=command,
+            status=WorkflowStatus(payload["status"]),
+            risk=RiskLevel(payload["risk"]),
+            proposal=payload["proposal"],
+            approval=approval,
+            execution=payload.get("execution"),
+            verification=payload.get("verification"),
+        )
+
+    def _save(self, state: WorkflowState) -> None:
+        self.state_store.save(
+            state.workflow_id,
+            self._serialize(state),
+        )
+
+    def _load(self, workflow_id: str) -> WorkflowState:
+        payload = self.state_store.load(workflow_id)
+        if payload is None:
+            raise KeyError(workflow_id)
+        return self._deserialize(payload)
 
     def submit_bank_reconciliation(
         self,
         command: CommandEnvelope,
     ) -> WorkflowState:
-        if command.idempotency_key in self.idempotency:
-            workflow_id = self.idempotency[command.idempotency_key]
-            return self.states[workflow_id]
+        existing_id = self.idempotency.get(command.idempotency_key)
+        if existing_id:
+            return self._load(existing_id)
 
         decision = self.policy.evaluate(
             command.intent,
@@ -120,8 +218,11 @@ class WorkflowCoordinator:
             proposal,
             approval,
         )
-        self.states[workflow_id] = state
-        self.idempotency[command.idempotency_key] = workflow_id
+        self._save(state)
+        self.idempotency.put(
+            command.idempotency_key,
+            workflow_id,
+        )
 
         evidence = [
             EvidenceItem("bank_row", bank_data),
@@ -152,7 +253,7 @@ class WorkflowCoordinator:
         workflow_id: str,
         approver: ActorIdentity,
     ) -> WorkflowState:
-        state = self.states[workflow_id]
+        state = self._load(workflow_id)
 
         if state.status != WorkflowStatus.WAITING_APPROVAL:
             raise ValueError("workflow is not waiting for approval")
@@ -171,6 +272,7 @@ class WorkflowCoordinator:
         state.approval.approved_by = approver.actor_id
         state.approval.approved_at = utcnow()
         state.status = WorkflowStatus.APPROVED
+        self._save(state)
 
         self.audit.append(
             AuditRecord(
@@ -187,7 +289,7 @@ class WorkflowCoordinator:
         workflow_id: str,
         actor: ActorIdentity,
     ) -> WorkflowState:
-        state = self.states[workflow_id]
+        state = self._load(workflow_id)
         if state.status != WorkflowStatus.APPROVED:
             raise PermissionError(
                 "approval required before execution"
@@ -204,6 +306,7 @@ class WorkflowCoordinator:
 
         state.execution = result
         state.status = WorkflowStatus.EXECUTED
+        self._save(state)
         self.audit.append(
             AuditRecord(
                 workflow_id,
@@ -228,6 +331,7 @@ class WorkflowCoordinator:
             if verified
             else WorkflowStatus.FAILED
         )
+        self._save(state)
         self.audit.append(
             AuditRecord(
                 workflow_id,
