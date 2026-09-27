@@ -42,6 +42,35 @@ class InMemoryEvidenceStore:
         return list(self.data.get(workflow_id, []))
 
 
+class InMemoryWorkflowStateStore:
+    def __init__(self) -> None:
+        self.data: dict[str, dict] = {}
+
+    def save(self, workflow_id: str, payload: dict) -> None:
+        self.data[workflow_id] = deepcopy(payload)
+
+    def load(self, workflow_id: str) -> dict | None:
+        value = self.data.get(workflow_id)
+        return deepcopy(value) if value is not None else None
+
+
+class InMemoryIdempotencyStore:
+    def __init__(self) -> None:
+        self.data: dict[str, str] = {}
+
+    def get(self, key: str) -> str | None:
+        return self.data.get(key)
+
+    def put(
+        self,
+        key: str,
+        workflow_id: str,
+        ttl_seconds: int = 86400,
+    ) -> None:
+        del ttl_seconds
+        self.data[key] = workflow_id
+
+
 class ConsoleNotifier:
     async def send(self, actor_id: str, message: str) -> None:
         print(f"NOTIFY {actor_id}: {message}")
