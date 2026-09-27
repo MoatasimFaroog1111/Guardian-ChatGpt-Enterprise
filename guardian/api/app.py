@@ -4,6 +4,7 @@ import os
 import secrets
 
 from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from guardian.core.models import ActorIdentity, CommandEnvelope
@@ -19,7 +20,10 @@ async def require_edge_secret(request: Request, call_next):
     if expected and request.url.path != "/health":
         supplied = request.headers.get("X-Guardian-Edge-Secret", "")
         if not secrets.compare_digest(supplied, expected):
-            raise HTTPException(403, "edge authorization required")
+            return JSONResponse(
+                {"detail": "edge authorization required"},
+                status_code=403,
+            )
     return await call_next(request)
 
 
