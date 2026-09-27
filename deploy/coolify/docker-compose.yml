@@ -1,0 +1,22 @@
+services:
+  guardian:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      PORT: "8000"
+      DATABASE_URL: ${DATABASE_URL}
+      UPSTASH_REDIS_REST_URL: ${UPSTASH_REDIS_REST_URL:-}
+      UPSTASH_REDIS_REST_TOKEN: ${UPSTASH_REDIS_REST_TOKEN:-}
+      GUARDIAN_EDGE_SECRET: ${GUARDIAN_EDGE_SECRET:-}
+      R2_ENDPOINT_URL: ${R2_ENDPOINT_URL:-}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
+      R2_BUCKET: ${R2_BUCKET:-guardian-enterprise}
+      RUNPOD_ENDPOINT_ID: ${RUNPOD_ENDPOINT_ID:-}
+      RUNPOD_API_KEY: ${RUNPOD_API_KEY:-}
+      MODAL_GPU_URL: ${MODAL_GPU_URL:-}
+      MODAL_TOKEN: ${MODAL_TOKEN:-}
+    ports:
+      - "8000:8000"
