@@ -1,5 +1,5 @@
 app = "guardian-chatgpt-enterprise"
-primary_region = "fra"
+primary_region = "sin"
 
 [build]
   dockerfile = "Dockerfile"
