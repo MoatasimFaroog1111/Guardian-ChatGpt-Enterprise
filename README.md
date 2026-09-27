@@ -12,18 +12,23 @@ The LLM never writes directly to ERP systems. Delivery channels such as Telegram
 
 - Guardian Command Center API
 - Policy engine with fail-closed behavior
-- Workflow coordinator
+- Workflow coordinator with durable state port
 - Segregation of Duties / self-approval prevention
-- Idempotency guard
-- Hash-chained audit ledger
+- Idempotency guard with optional Upstash Redis REST
+- Hash-chained audit ledger with optional Neon/PostgreSQL persistence
 - Evidence handling contracts
+- Cloudflare R2 object-store adapter
+- Modal / RunPod on-demand GPU router
 - Bank reconciliation vertical slice
 - Draft-only ERP adapter
 - Independent post-action verifier
 - Telegram delivery adapter boundary
-- Enterprise domain catalog
+- Cloudflare Worker edge gateway
+- Cloudflare Pages operator console
+- Fly.io scale-to-zero manifest
+- Hetzner + Coolify fallback compose file
 - Docker / Docker Compose
-- GitHub Actions CI with manual `workflow_dispatch`
+- GitHub Actions CI and manual deployment workflows
 - Automated tests
 
 ## Run locally
@@ -37,11 +42,27 @@ uvicorn guardian.api.app:app --reload
 
 Open: `http://127.0.0.1:8000/docs`
 
-## Docker
+## Low-cost production stack
 
-```bash
-docker compose up --build
+```text
+Cloudflare Pages
+       |
+Cloudflare Worker
+       |
+Fly.io FastAPI container
+  |       |       |
+Neon   Upstash    R2
+                  |
+             Modal / RunPod
+             only on demand
 ```
+
+The same Docker image can move to a Hetzner VPS managed by self-hosted Coolify if
+steady CPU usage becomes cheaper there than serverless/container billing.
+
+See:
+- `docs/LOW_COST_CLOUD.md`
+- `docs/COST_GUARDRAILS.md`
 
 ## Financial workflow
 
@@ -54,19 +75,24 @@ docker compose up --build
 
 ## Repository strategy
 
-- `main` — protected, releasable code only.
-- `develop` — integration branch for approved feature work.
-- `feature/*` — isolated implementation branches.
+- `main` — releasable code only.
+- `develop` — integration branch.
+- `feature/*` — isolated feature work.
 - `fix/*` — non-emergency fixes.
-- `hotfix/*` — urgent production corrections branched from `main`.
-- `release/*` — stabilization only when a formal release window is needed.
+- `hotfix/*` — urgent production corrections.
+- `release/*` — stabilization when needed.
 
 Normal flow: `feature/* → develop → main` through Pull Requests and green CI.
 
-## Live integrations
+## Production secrets
 
-The default implementation intentionally uses an in-memory ERP adapter to prevent accidental production financial writes. Real Odoo, Telegram, model-provider, storage, and workflow adapters must be added behind the ports in `guardian/core/ports.py`, with credentials supplied only via environment variables or deployment secret stores.
+No production secret belongs in Git. Use Fly/Cloudflare/GitHub provider secret
+stores. The backend can optionally require `GUARDIAN_EDGE_SECRET`, while the
+Cloudflare Worker injects the matching secret so mutation traffic enters through
+the edge gateway.
 
-## Cost strategy
+## ERP safety
 
-The baseline avoids mandatory paid infrastructure. It runs locally or on a small container service and can start with in-process adapters. PostgreSQL/object storage/durable workflow engines can be introduced only when workload and reliability requirements justify them.
+The default ERP implementation remains in-memory and draft-only. A real Odoo
+adapter must implement the existing port and pass production-readiness tests
+before it is enabled.
