@@ -1,8 +1,8 @@
-from guardian.runtime import build_coordinator
 from guardian.adapters.local import (
     InMemoryIdempotencyStore,
     InMemoryWorkflowStateStore,
 )
+from guardian.runtime import build_coordinator
 
 
 def test_runtime_defaults_to_low_cost_local_adapters(monkeypatch):
